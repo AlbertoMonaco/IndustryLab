@@ -1,0 +1,1184 @@
+---
+title: "Progetto Industry Caso 1"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Import librerie
+```{r}
+library(dplyr)
+library(lubridate)
+library(naniar)
+library(ggplot2)
+library(ROSE)
+library(caret)
+library(Hmisc)
+library(corrplot)
+library(car)
+library(caret)
+library(tidyverse)
+library(dagitty)
+library(lavaan)
+library(stats)
+library(bnlearn)
+library(naniar)
+library(MLmetrics)
+library(tree)
+library(factoextra)
+library(cluster)
+```
+
+
+
+
+Load dei dati
+```{r}
+data1 <- read.csv2("Bosch_case_1_1.csv", header = T)
+data2 <- read.csv2("Bosch_case_1_2.csv", header = T)
+
+data <- rbind(data1, data2)
+data <- as.data.frame(data[,-1])
+```
+
+
+
+```{r}
+data <- data %>% 
+  select(-c("UltimaStazione", "Data_Ingresso", "Data_Uscita"))
+```
+
+
+
+Si procede svolgendo una prima analisi esplorativa dei dati, ricercando eventuali valori anomali.
+
+```{r}
+data %>%
+  filter(Esito_S10 == 2) %>% 
+  group_by(S10Angolo) %>%
+  summarise(counts = n()) 
+```
+
+
+```{r}
+data %>%
+  filter(Esito_S10 == 2) %>% 
+  group_by(S10Coppia) %>%
+  summarise(counts = n()) 
+```
+
+
+```{r}
+data %>%
+  filter(Esito_S20 == 2) %>% 
+  group_by(S20Angolo) %>%
+  summarise(counts = n()) 
+```
+
+
+```{r}
+data %>%
+  filter(Esito_S20 == 2) %>% 
+  group_by(S20Coppia) %>%
+  summarise(counts = n()) 
+```
+
+
+```{r}
+data %>%
+  filter(Esito_S20 == 2) %>% 
+  group_by(S20Portata) %>%
+  summarise(counts = n()) 
+```
+
+
+
+
+Da quanto emerge da queste brevi osservazioni, sembra ricorrente l'utilizzo del valore -21474.84 per identificare esito negativo della lavorazione nella determinata stazione di riferimento.
+Si procede quindi con l'eliminazione di tutte le osservazioni aventi almeno uno di questi valori, in quanto potrebbero gravemente distorcere l'analisi.
+
+
+```{r}
+data <- data %>%  
+  filter(across(everything(), ~ .x >= 0))
+```
+
+
+
+
+
+Numero di missing per variabile.
+
+```{r}
+gg_miss_var(data)
+```
+
+
+
+
+```{r, fig.height = 5, fig.width = 11}
+par(mfrow=c(1,2))
+
+boxplot(data$S10Angolo
+~Esito_S10,
+data=data,
+main="Boxplots di Angolo in base a Esito_S10",
+xlab="Esito_S10",
+ylab="S10Angolo",
+col="orange",
+border="brown",
+na.rm = T
+)
+
+
+boxplot(data$S10Coppia
+~Esito_S10,
+data=data,
+main="Boxplots di Coppia in base a Esito_S10",
+xlab="Esito_S10",
+ylab="S10Coppia",
+col="orange",
+border="brown",
+na.rm = T
+)
+```
+
+
+```{r, fig.height = 4, fig.width = 11}
+par(mfrow=c(1,3))
+boxplot(data$S20Angolo
+~Esito_S20,
+data=data,
+main="Boxplots di Angolo in base a Esito_S20",
+xlab="Esito_S20",
+ylab="S20Angolo",
+col="orange",
+border="brown",
+na.rm = T
+)
+
+
+boxplot(data$S20Coppia
+~Esito_S20,
+data=data,
+main="Boxplots di Coppia in base a Esito_S20",
+xlab="Esito_S20",
+ylab="S20Coppia",
+col="orange",
+border="brown",
+na.rm = T
+)
+
+boxplot(data$S20Portata
+~Esito_S20,
+data=data,
+main="Boxplots di Portata in base a Esito_S20",
+xlab="Esito_S20",
+ylab="S20Portata",
+col="orange",
+border="brown",
+na.rm = T
+)
+```
+
+
+
+```{r, fig.height = 5, fig.width = 11}
+par(mfrow=c(1,2))
+boxplot(data$S60F2DepresMin     
+~Esito_S60,
+data=data,
+main="Boxplots di S60F2DepresMin in base a Esito_S60",
+xlab="Esito_S60",
+ylab="S60F2DepresMin",
+col="orange",
+border="brown",
+na.rm = T
+)
+
+
+boxplot(data$S60F2Velocita      
+~Esito_S60,
+data=data,
+main="Boxplots di S60F2Velocita in base a Esito_S60",
+xlab="Esito_S60",
+ylab="S60F2Velocita",
+col="orange",
+border="brown",
+na.rm = T
+)
+```
+
+
+
+```{r}
+nrow(data[data$Esito_S10==0,])
+nrow(data[data$Esito_S10==1,])
+nrow(data[data$Esito_S10==2,])
+nrow(data[data$Esito_S10==3,])
+nrow(data[data$Esito_S10==4,])
+```
+
+
+```{r}
+nrow(data[data$Esito_S20==0,])
+nrow(data[data$Esito_S20==1,])
+nrow(data[data$Esito_S20==2,])
+nrow(data[data$Esito_S20==3,])
+nrow(data[data$Esito_S20==4,])
+```
+
+
+```{r}
+nrow(data[data$Esito_S40==0,])
+nrow(data[data$Esito_S40==1,])
+nrow(data[data$Esito_S40==2,])
+nrow(data[data$Esito_S40==3,])
+nrow(data[data$Esito_S40==4,])
+```
+
+
+```{r}
+nrow(data[data$Esito_S50==0,])
+nrow(data[data$Esito_S50==1,])
+nrow(data[data$Esito_S50==2,])
+nrow(data[data$Esito_S50==3,])
+nrow(data[data$Esito_S50==4,])
+```
+
+
+```{r}
+nrow(data[data$Esito_S60==0,])
+nrow(data[data$Esito_S60==1,])
+nrow(data[data$Esito_S60==2,])
+nrow(data[data$Esito_S60==3,])
+nrow(data[data$Esito_S60==4,])
+```
+
+
+
+```{r}
+data %>% 
+  select(Esito_S10, S10Angolo, S10Coppia) %>% 
+  filter(Esito_S10 == 2) %>% 
+  summarise(n())
+```
+
+
+```{r}
+data %>% 
+  filter(Esito_S20 == 2) %>% 
+  summarise(n())
+```
+
+
+```{r}
+data %>% 
+  filter(Esito_S40 == 2) %>% 
+  summarise(n())
+```
+
+
+```{r}
+data %>% 
+  filter(Esito_S50 == 2) %>% 
+  summarise(n())
+```
+
+
+```{r}
+data %>% 
+  select(Esito_S60, Esito_S10, S10Angolo, S10Coppia) %>% 
+  filter(Esito_S60 == 2) %>% 
+  summarise(n())
+```
+
+
+
+```{r}
+name <- c("Stazione10", "Stazione20", "Stazione40", "Stazione50", "Stazione60")
+val <- c(nrow(data[data$Esito_S10==2,]),nrow(data[data$Esito_S20==2,]),
+         nrow(data[data$Esito_S40==2,]),nrow(data[data$Esito_S50==2,]),
+         nrow(data[data$Esito_S60==2,]))
+
+barplot(val,names.arg=name,ylab="N di lavorazioni scartate",col="Red",border="black")
+```
+
+
+Le stazioni 10 e 50 sono quelle in cui si presenta un numero maggiore di lavorazioni scartate
+
+
+
+
+Si analizzano gli esiti:
+Sappiamo che quando esito = 1, la lavorazione è andata a buon fine.
+Se, al contrario, è assegnato il valore 2, la lavorazione è non soddisfacente e quindi scartata.
+Restano esito = 0: non lavorato; esito = 3: disabilitato; esito = 4: rilavorato.
+
+
+
+L'indice di correlazione R per ranghi di Spearman è una misura statistica non parametrica di correlazione. Essa misura il grado di relazione tra due variabili e l'unica ipotesi richiesta è che siano ordinabili.
+
+
+Diversamente dal coefficiente di correlazione lineare di Pearson, il coefficiente di Spearman non misura una relazione lineare anche qualora vengano usate misure intervallari. Infatti esso permette di stabilire quanto bene una relazione tra due variabili può essere descritta usando una funzione monotona.
+
+Si analizza quindi il coefficiente di correlazione di Spearman tra gli esiti di stazioni successive.
+
+```{r}
+cor.test(data$Esito_S10, data$Esito_S20,  method = "spearman", na.rm = T)
+```
+
+
+```{r}
+cor.test(data$Esito_S20, data$Esito_S40,  method = "spearman")
+```
+
+
+```{r}
+cor.test(data$Esito_S40, data$Esito_S50,  method = "spearman")
+```
+
+
+```{r}
+cor.test(data$Esito_S50, data$Esito_S60,  method = "spearman")
+```
+
+
+```{r}
+unique(data$Esito_S10)
+unique(data$Esito_S20)
+unique(data$Esito_S40)
+unique(data$Esito_S50)
+unique(data$Esito_S60)
+```
+
+
+
+
+
+
+
+Si analizzano quindi i dati, creando diversi dataset per ogni stazione.
+Pertanto, l'insieme dei dati corrispondenti alla stazione 10, prenderà in considerazione le variabili utili ad analizzare il processo fino alla stazione 10 e così via per ogni insieme.
+
+Per ogni specifica stazione di riferimento, si analizzeranno le sole osservazione con esito positivo o negativo (rispettivamente 1 e 2).
+Infine, verrà performato un undersampling affinchè le classi di cui sopra siano bilanciate.
+Si ricorda infatti, che l'analisi tende a scovare le anomalie del processo quando la lavorazione in una determinata stazione risulta scartata.
+Lo studio in questione, per ottenere un alto livello di accuratezza, richiede che il numero di lavorazioni scartate e giudicate positive sia simile.
+
+```{r}
+stazione_10 <- data %>% 
+  select(Esito_S10, S10Angolo, S10Coppia) %>% 
+  filter(Esito_S10 == 1 | Esito_S10 == 2)
+
+
+stazione_10_under <- ovun.sample(Esito_S10 ~., data = stazione_10, 
+                                 method = "under", p = 0.5, seed = 123)$data
+
+stazione10_scarti <- stazione_10_under %>% 
+  filter(Esito_S10 == 2)
+
+stazione10_funzionanti <- stazione_10_under %>% 
+  filter(Esito_S10 == 1)
+```
+
+
+
+```{r}
+stazione_20 <- data %>% 
+  select(Esito_S10, Esito_S20, S10Angolo, S10Coppia, 
+         S20Angolo,  S20Coppia, S20Portata) %>% 
+    filter(Esito_S20 == 1 | Esito_S20 == 2)
+
+stazione_20_under <- ovun.sample(Esito_S20 ~., data = stazione_20, 
+                                 method = "under", p = 0.5, seed = 123)$data
+
+stazione20_scarti <- stazione_20_under %>% 
+  filter(Esito_S20 == 2)
+
+stazione20_funzionanti <- stazione_20_under %>% 
+  filter(Esito_S20 == 1)
+```
+
+
+
+```{r}
+stazione_40 <- data %>% 
+  select(Esito_S10, Esito_S20, Esito_S40, S10Angolo, 
+         S10Coppia, S20Angolo,  S20Coppia, S20Portata, 
+         S40F2MomentoTorcMax, S40Vite1Coppia, S40Vite1Angolo, 
+         S40Vite2Coppia, S40Vite2Angolo, S40Vite3Coppia, S40Vite3Angolo) %>% 
+      filter(Esito_S40 == 1 | Esito_S40 == 2)
+
+stazione_40_under <- ovun.sample(Esito_S40 ~., data = stazione_40, 
+                                 method = "under", p = 0.5, seed = 123)$data
+
+stazione40_scarti <- stazione_40_under %>% 
+  filter(Esito_S40 == 2)
+
+stazione40_funzionanti <- stazione_40_under %>% 
+  filter(Esito_S40 == 1)
+```
+
+
+
+
+```{r}
+stazione_50 <- data %>% 
+  select(-c("S60F2DepresMin", "S60F2Velocita", "S60F2TenutaVNR", 
+            "S60F2Coppia", "Esito_S60")) %>% 
+        filter(Esito_S50 == 1 | Esito_S50 == 2)
+
+stazione_50_under <- ovun.sample(Esito_S50 ~., data = stazione_50, 
+                                 method = "under", p = 0.5, seed = 123)$data
+
+stazione50_scarti <- stazione_50_under %>% 
+  filter(Esito_S50 == 2)
+
+stazione50_funzionanti <- stazione_50_under %>% 
+  filter(Esito_S50 == 1)
+```
+
+
+
+
+```{r}
+stazione_60 <- data %>%  
+          filter(Esito_S60 == 1 | Esito_S60 == 2)
+
+stazione_60_under <- ovun.sample(Esito_S60 ~., data = stazione_60, 
+                                 method = "under", p = 0.5, seed = 123)$data
+
+stazione60_scarti <- stazione_60_under %>% 
+  filter(Esito_S60 == 2)
+
+stazione60_funzionanti <- stazione_60_under %>% 
+  filter(Esito_S60 == 1)
+```
+
+
+
+
+
+Si analizzano ora le correlazioni delle variabili interne alle stazioni, con i vari esiti delle lavorazioni.
+
+```{r}
+s10_correlation <- cor(stazione_10_under$Esito_S10,  
+                       stazione_10_under, method = c("spearman"))
+
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(s10_correlation, method="color", col=col(200),  
+         type="upper",
+         addCoef.col = "black", 
+         tl.col="black", tl.srt=45
+         )
+```
+
+
+
+
+Le due grandezze della stazione 10 condividono una correlazione praticamente identica ma opposta con l'esito.
+Infatti, se l'angolo cresce, aumenta il valore dell'esito (e quindi si passa da 1 a 2, cioè da positivo a negativo).
+Ragionamento opposto per il valore di coppia.
+
+
+
+```{r}
+s20_correlation <- cor(stazione_20_under$Esito_S20,  
+                       stazione_20_under, method = c("spearman"))
+
+corrplot(s20_correlation, method="color", col=col(200),  
+         type="upper",
+         addCoef.col = "black", 
+         tl.col="black", tl.srt=45 
+         )
+```
+
+
+
+
+Il valore di coppia e di portata, nella stazione 20 presentano una correlazione negativa con l'esito.
+Al contrario, l'angolo non sembra influenzare fortemente tale esito.
+
+
+
+```{r}
+s40_correlation <- cor(stazione_40_under$Esito_S40,  
+                       stazione_40_under, method = c("spearman"))
+
+corrplot(s40_correlation, method="color", col=col(200),  
+         type="upper",
+         addCoef.col = "black", 
+         tl.col="black", tl.srt=45
+         )
+```
+
+
+
+
+Nella stazione 40 si conferma il risultato ottenuto dall'analisi effettuata sulla stazione 10.
+Infatti, le variabili che esprimono angolo finale del processo di avvitatura delle varie viti presentano una relazione lineare positiva con l'esito.
+Il il valore di coppia, ancora una volta, presenta una correlazione negativa con l'esito, anche se più lieve rispetto alle stazioni precedenti. 
+
+
+```{r}
+s50_correlation <- cor(stazione_50_under$Esito_S50,  
+                       stazione_50_under, method = c("spearman"))
+
+corrplot(s50_correlation, method="color", col=col(200),  
+         type="upper",
+         addCoef.col = "black",
+         tl.col="black", tl.srt=45 
+         )
+```
+
+
+
+
+Nella stazione 50 il risultato esprime una certa peculiarità.
+Infatti, sembra che tutte le variabili che non indicano il tipo di esito nella stazione abbiano un grado di correlazione negativo con l'esito della stazione 50.
+
+
+
+
+```{r}
+s60_correlation <- cor(stazione_60_under$Esito_S60,  
+                       stazione_60_under, method = c("spearman"))
+
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(s60_correlation, method="color", col=col(200),  
+         type="upper",
+         addCoef.col = "black",
+         tl.col="black", tl.srt=45
+         )
+
+```
+
+
+
+
+Nella stazione 60 si confermano i risultati ottenuti nella stazione precedente.
+
+
+
+Dai grafici delle correlazioni in ogni stazione, è possibile notare come gli esiti in un data momento del processo siano positivamente correlati con gli esiti delle lavorazioni avvenute nelle stazioni precedenti.
+Ovvero, quando un esito in una stazione risulta non positivo (non andato a buon fine), anche l'esito della stazione precedente è portato ad assumere valori diversi da 1 (quindi anch'esso non positivo).
+Il discorso vale anche facendo il ragionamento opposto: un esito positivo della lavorazione nella stazione X-1, tendenzialmente favorisce un esito positivo nella stazione X.
+
+In riferimento alle altre variabili disponibili stazione per stazione: nella stazione 10, un valore maggiore dell'angolo di avvitatura porta il processo ad ottenere esiti non positivi, mentre vale il ragionamento opposto per la coppia del processo di avvitatura.
+
+Nella stazione 20, l'angolo finale del processo di avvitatura ottenuto nella stazione 10 e in quella corrente, insieme alla coppia della prima stazione, non sembrano influenzare fortemente l'esito.
+Al contrario, un valore maggiore di coppia e portata d'aria nella stazione 20, favoriscono un esito positivo.
+
+Nella stazione 40, il momento torcente massimo e le variabili che esprimono angolo finale del processo di avvitatura delle varie viti presentano una relazione lineare positiva con l'esito.
+Il il valore di coppia, ancora una volta, presenta una correlazione negativa con l'esito, anche se più lieve rispetto alle stazioni precedenti. 
+
+Infine, sia nella stazione 50 che nella 60, all'aumentare del valore delle variabili (sempre ad esclusione degli esiti delle stazioni precedenti) l'esito è portato ad ottenere valori negativi.
+
+Per tutte le osservazioni fatte, vale la regola (1: esito positivo, 2: negativo).
+
+
+
+
+
+
+Si tenta ora un tipo di approccio non supervisionato.
+Tramite l'algoritmo K-Means, analizziamo quanto sia possibile per un algoritmo di questo tipo indagata i pattern intrisechi nei dati e quindi classificare un'osservazione come positiva o meno.
+Ci si limita ad osservare ciò nel dataset riferito alla stazione 60, cioè quella finale, tramite cui si decide se commercializzare un prodotto o meno.
+
+```{r, fig.height = 6, fig.width = 12}
+set.seed(123)
+
+data_for_k_means <- stazione_60_under[,-seq(1:5)]
+
+clusters <- kmeans(data_for_k_means, 2)
+
+fviz_cluster(clusters,stazione_60_under[,-seq(1:5)],
+             choose.vars = c("S40Vite3Angolo","S60F2DepresMin"), 
+             ellipse.type = "t",check_overlap=T)
+
+fviz_cluster(clusters,stazione_60_under[,-seq(1:5)], ellipse.type = "t")
+```
+
+
+```{r, fig.height = 15, fig.width = 24}
+data_for_k_means <- data.frame(data_for_k_means)
+data_for_k_means$k <- as.factor(clusters$cluster)
+
+plot(data_for_k_means,col=clusters$cluster)
+points(clusters$center,col=1:2,pch=8,cex=1)
+```
+
+
+
+
+```{r}
+ss <- silhouette(clusters$cluster, dist(data_for_k_means))
+mean(ss[, 3])
+```
+
+
+
+
+```{r}
+data_for_k_means <- cbind(stazione_60_under$Esito_S60, data_for_k_means)
+colnames(data_for_k_means)[1] <- "Esito_S60"
+
+data_for_k_means %>% 
+  filter(Esito_S60 == 1) %>% 
+  summarise(n())
+```
+
+
+```{r}
+data_for_k_means %>% 
+  filter(Esito_S60 == 1 & k == 1) %>% 
+  summarise(n())
+```
+
+
+
+
+```{r}
+data_for_k_means %>% 
+  filter(Esito_S60 == 2) %>% 
+  summarise(n())
+```
+
+
+
+
+```{r}
+data_for_k_means %>% 
+  filter(Esito_S60 == 2 & k ==2) %>% 
+  summarise(n())
+```
+
+
+
+L'algoritmo di machine learning non supervisionato K-Means riesce a clusterizzare molto bene le osservazioni.
+Oltre il 60% delle lavorazioni con esito negativo nella stazione 60 appartengono al giusto cluster, mentre praticamente tutte le lavorazioni con esito positivo sono assegnate al gruppo esatto (99%). 
+
+Il valore di Silhouette, che misura quanto simile sia un oggetto al suo cluster (coesione) rispetto agli altri cluster (separazione), ottiene un valore vicino a 0.70. (Il massimo è pari a 1).
+
+
+
+Si tenta ora un altro approccio di tipo Non Supervisionato, utilizzando un tipo di clustering gerarchico.
+
+```{r}
+set.seed(123)
+
+data_for_hvcluster <- data_for_k_means %>% 
+  select(-c("Esito_S60", "k"))
+
+data_for_hvcluster <- as.data.frame(data_for_hvcluster)
+
+dist_matrix <- dist(data_for_hvcluster, method = 'euclidean')
+```
+
+
+```{r, fig.height = 6, fig.width = 12}
+hclust_avg <- hclust(dist_matrix, method = 'ward.D')
+plot(hclust_avg,  labels = F, hang = -1, main = "Dendrogramma dati stazione S60")
+```
+
+
+
+```{r}
+sil_cl <- silhouette(cutree(hclust_avg, k=2) ,dist_matrix, title=title(main = 'Good'))
+mean(sil_cl[,3])
+```
+
+
+```{r}
+cut <- cutree(hclust_avg, k=2)
+length(cut[cut==2])  #n di osservazioni classificate come appartenenti al cluster 2
+```
+
+
+```{r}
+d <- data.frame(data_for_hvcluster)
+d$k <- as.factor(cut)
+
+d <- cbind(stazione_60_under$Esito_S60, d)
+colnames(d)[1] <- "Esito_S60"
+
+d %>% 
+  filter(Esito_S60 == 1) %>% 
+  summarise(n())
+```
+
+
+```{r}
+d %>% 
+  filter(Esito_S60 == 1 & k == 1) %>% 
+  summarise(n())
+```
+
+
+```{r}
+d %>% 
+  filter(Esito_S60 == 2) %>% 
+  summarise(n())
+```
+
+
+```{r}
+d %>% 
+  filter(Esito_S60 == 2 & k ==2) %>% 
+  summarise(n())
+```
+
+Vediamo come i risultati del clustering gerarchico siano buoni, comparabili a quelli ottenuti dal k-means sia in termini di silhouette coefficient, che in termini di accuracy. I due algoritmi riescono quindi a clusterizzare i dati in modo significativo anche rispetto alla variabile di classe.
+
+
+
+
+
+
+
+Si sviluppano quindi delle regressioni multivariate.
+L'obiettivo è analizzare quali siano le variabili (e quindi grandezze) riferite alle stazione X-1 che siano più importanti ed influenti nel definire il valore delle grandezza nella stazione X.
+Inoltre, con tale tentativo, si indaga come, al variare delle variabili esplicative, cambia il valore delle variabili dipendenti (cioè quelle riferite alla stazione X).
+Le variabili verranno standardizzate per rendere più affidabili le considerazioni che si affronteranno una volta stabiliti i risultati.
+Per ogni stazione, verranno sviluppati 2 modelli:
+1) per indagare le relazioni tra le variabili in caso l'esito della stazione sia positivo (esito = 1).
+2) In caso opposto, cioè con esito negativo (esito = 2).
+
+Per prima cosa, si analizza la correlazione di Spearman tra tutte le variabili, per indagare eventuali features che potrebbero provocare multicollinearità nel modello.
+
+```{r}
+stazione_10_under_pos <- stazione_10_under %>% 
+  filter(Esito_S10 == 1)
+
+stazione_10_under_neg <- stazione_10_under %>% 
+  filter(Esito_S10 == 2)
+
+
+
+stazione_20_under_pos <- stazione_20_under %>% 
+  filter(Esito_S20 == 1)
+
+stazione_20_under_neg <- stazione_20_under %>% 
+  filter(Esito_S20 == 2)
+
+
+
+stazione_40_under_pos <- stazione_40_under %>% 
+  filter(Esito_S40 == 1)
+
+stazione_40_under_neg <- stazione_40_under %>% 
+  filter(Esito_S40 == 2)
+
+
+
+stazione_50_under_pos <- stazione_50_under %>% 
+  filter(Esito_S50 == 1)
+
+stazione_50_under_neg <- stazione_50_under %>% 
+  filter(Esito_S50 == 2)
+
+
+
+stazione_60_under_pos <- stazione_60_under %>% 
+  filter(Esito_S20 == 1)
+
+stazione_60_under_neg <- stazione_60_under %>% 
+  filter(Esito_S20 == 2)
+```
+
+
+
+Si parte con la stazione 20.
+
+
+
+```{r, fig.height = 10, fig.width = 18}
+s20_correlation_all <- cor(stazione_20_under, method = c("spearman"))
+
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(s20_correlation_all, method="color", col=col(200),  
+         type="upper",
+         addCoef.col = "black",
+         tl.col="black", tl.srt=45
+         )
+```
+
+
+
+Non sembrano esserci features da rimuovere.
+
+
+
+
+```{r}
+data_20_for_model <- stazione_20_under_pos %>% 
+  select(-c("Esito_S20", "Esito_S10")) 
+
+data_20_for_model <- as.data.frame(scale(data_20_for_model))
+
+mod_multivariato_20_pos <- lm(cbind(S20Angolo, S20Coppia, S20Portata) ~ ., 
+                              data = data_20_for_model)
+summary(mod_multivariato_20_pos)
+```
+
+Il valore di Coppia e Portata presentano una chiara tendenza opposta. La Coppia nella stazione precedente sembra essere la variabile maggiormente influente nella spiegazione di tali grandezze, presentando una significativa relazione negativa in entrambi gli ultimi due modelli.
+
+
+```{r}
+data_20_for_model <- stazione_20_under_neg %>% 
+  select(-c("Esito_S20", "Esito_S10")) 
+
+data_20_for_model <- as.data.frame(scale(data_20_for_model))
+
+mod_multivariato_20_neg <- lm(cbind(S20Angolo, S20Coppia, S20Portata) ~ ., 
+                              data = data_20_for_model)
+summary(mod_multivariato_20_neg)
+```
+
+S10Coppia, in questo caso, ottiene coefficienti maggiori di zero.
+Differentemente da prima, però, la grandezza che descrive l'angolo del prodotto alla stazione 10 non incide sulle risposte.
+
+
+
+
+Nella stazione 40:
+
+```{r, fig.height = 10, fig.width = 18}
+s40_correlation_all <- cor(stazione_40_under, method = c("spearman"))
+
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(s40_correlation_all, method="color", col=col(200),  
+         type="upper",
+         addCoef.col = "black",
+         tl.col="black", tl.srt=45
+         )
+```
+
+
+
+
+Si tenta l'utilizzo del modello utilizzando tutte le variabili a disposizione, a meno di quelle relative agli esiti che renderebbero la matrice singolare.
+
+
+```{r}
+data_40_for_model <- stazione_40_under_pos %>% 
+  select(-c("Esito_S10", "Esito_S20", "Esito_S40")) 
+
+data_40_for_model <- as.data.frame(scale(data_40_for_model))
+
+mod_multivariato_40_pos <- lm(cbind(
+  S40F2MomentoTorcMax, S40Vite1Coppia, S40Vite1Angolo, S40Vite2Coppia,
+  S40Vite2Angolo, S40Vite3Coppia, S40Vite3Angolo) ~ ., data = data_40_for_model)
+
+summary(mod_multivariato_40_pos)
+```
+
+I coefficienti della grandezza Coppia, sia nella stazione 10 che nella stazione 20, riescono a spiegare le variazioni del valore della Coppia nelle 3 viti (coefficienti sempre positivi).
+Lo stesso discorso vale se si sostituiscono le variabili Coppia con le misure degli angoli.
+Se la variabile risposta è il Momento torcente massimo, tutti i coefficienti dei regressori risultano significativi.
+
+
+
+```{r}
+data_40_for_model <- stazione_40_under_neg %>% 
+  select(-c("Esito_S10", "Esito_S20", "Esito_S40")) 
+
+data_40_for_model <- as.data.frame(scale(data_40_for_model))
+
+mod_multivariato_40_neg <- lm(cbind(
+  S40F2MomentoTorcMax, S40Vite1Coppia, S40Vite1Angolo, S40Vite2Coppia,
+  S40Vite2Angolo, S40Vite3Coppia, S40Vite3Angolo) ~ ., data = data_40_for_model)
+summary(mod_multivariato_40_neg)
+```
+
+La variabile Portata sembra la più influente nello spiegare le grandezze della stazione 40, in caso di esito negativo della lavorazione.
+
+
+
+
+
+Stazione 50:
+
+```{r, fig.height = 10, fig.width = 18}
+s50_correlation_all <- cor(stazione_50_under, method = c("spearman"))
+
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(s50_correlation_all, method="color", col=col(200),  
+         type="upper",
+         addCoef.col = "black",
+         tl.col="black", tl.srt=45
+         )
+```
+
+
+
+Anche in questo caso verrano eliminati solamente gli esiti.
+
+```{r}
+data_50_for_model <- stazione_50_under_pos %>% 
+  select(-c("Esito_S10", "Esito_S20", "Esito_S40", "Esito_S50")) 
+
+data_50_for_model <- as.data.frame(scale(data_50_for_model))
+
+mod_multivariato_50_pos <- lm(cbind(S50PressionePT, S50TenutaPZ) ~ ., 
+                              data = data_50_for_model)
+summary(mod_multivariato_50_pos)
+```
+
+
+Il modello con risposta la variabile S50PressionePT sembra essere particolarmente adatto alla situazione in analisi. Interessante notare come tutti i coeffienti delle variabili riferite alla stazione 20 risultino ampliamente significativi.
+
+
+
+```{r}
+data_50_for_model <- stazione_50_under_neg %>% 
+  select(-c("Esito_S10", "Esito_S20", "Esito_S40", "Esito_S50")) 
+
+data_50_for_model <- as.data.frame(scale(data_50_for_model))
+
+mod_multivariato_50_neg <- lm(cbind(S50PressionePT, S50TenutaPZ) ~ ., 
+                              data = data_50_for_model)
+summary(mod_multivariato_50_neg)
+```
+
+
+I coefficienti di S20Angolo e Momento torcente massimo sono rispettivamente negativo e positivo, all'opposto di quanto accadeva nel modello precedente.
+
+
+
+
+Stazione 60:
+
+```{r, fig.height = 10, fig.width = 18}
+s60_correlation_all <- cor(stazione_60_under, method = c("spearman"))
+
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(s60_correlation_all, method="color", col=col(200),  
+         type="upper",
+         addCoef.col = "black",
+         tl.col="black", tl.srt=45
+         )
+```
+
+
+
+Si eliminano gli esiti.
+
+
+```{r}
+data_60_for_model <- stazione_60_under_pos %>% 
+  select(-c("Esito_S10", "Esito_S20", "Esito_S40", "Esito_S50", "Esito_S60")) 
+
+mod_multivariato_60_pos <- lm(cbind(S60F2DepresMin, S60F2Coppia, 
+                                S60F2Velocita, S60F2TenutaVNR) ~ ., 
+                              data = data_60_for_model)
+summary(mod_multivariato_60_pos)
+```
+
+
+
+Se si considera S60F2DepresMin come risposta, si evince una forte significatività per tutti i coefficienti delle variabili relative alla stazione 10 e 20 (ad eccezione della portata), per il Momento torcente massimo (coefficiente negativo) e per la Portata misurata nella stazione 50.
+
+```{r}
+data_60_for_model <- stazione_60_under_neg %>% 
+  select(-c("Esito_S10", "Esito_S20", "Esito_S40", "Esito_S50", "Esito_S60")) 
+
+mod_multivariato_60_neg <- lm(cbind(S60F2DepresMin, S60F2Coppia, 
+                                S60F2Velocita, S60F2TenutaVNR) ~ ., 
+                              data = data_60_for_model)
+summary(mod_multivariato_60_neg)
+```
+
+
+In questo caso, la relazione più forte è espressa tra le variabili Tenuta e Pressione nella stazione 50 (coefficienti positivi) con la risposta Tenuta della valvola di non ritorno.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#########################
+Bayesian Network Learning
+#########################
+
+
+
+Proviamo ad indagare la struttura delle relazioni causali tra le variabili del nostro dataset. Prima di tutto costruiamo un dataset contenente la classe Esito Finale che sarà 1 se il prodotto ha avuto esito buono lungo tutta la catena produttiva (cioè se ha Esito_S60 = 1), oppure 0 in caso contrario (Esito_S60 = 0 o 2). Tutte la altre variabili di Esito saranno scartate.
+
+```{r}
+df <- data[,-seq(1:4)]
+
+df <- df[df$Esito_S60 != 3, ]
+df <- df[df$Esito_S60 != 4, ]
+df <- df[df$Esito_S60 != 0, ] 
+
+df$Esito_S60 <- as.factor(as.numeric(df$Esito_S60))
+```
+
+
+```{r}
+df %>% filter(df$Esito_S60==1)%>%
+   summarise(n()) 
+
+df %>% filter(df$Esito_S60==2)%>%
+   summarise(n()) 
+
+cat("% di esito finale positivo: ", 
+    dim(df[df$Esito_S60 ==1,])[1]/dim(df)[1])
+
+cat("\n% di esito finale negativo: ", 
+    dim(df[df$Esito_S60 ==2,])[1]/dim(df)[1])
+```
+
+
+
+
+
+Processiamo i dati discretizzandoli in base alle informazioni di Lower Limit e Upper Limit, in modo da poter applicare algoritmi di structure learning. In particolare per ciscuna variabile assegneremo 1 se il valore corrispondente rientra nell'intervallo prestabilito, altrimenti verrà assegnato 0.
+
+```{r}
+df$S10Coppia <- as.factor(as.numeric(
+  ifelse(df$S10Coppia > 4 & df$S10Coppia < 4.5 , 1,0)))
+df$S10Angolo <- as.factor(as.numeric(
+  ifelse(df$S10Angolo > 0 & df$S10Angolo < 50 , 1,0)))
+
+
+df$S20Coppia <- as.factor(as.numeric(ifelse
+                                     (df$S20Coppia > 6 & df$S20Coppia < 8 , 1,0)))
+df$S20Angolo <- as.factor(as.numeric(ifelse(
+  df$S20Angolo > 0 & df$S20Angolo < 50 , 1,0)))
+df$S20Portata <- as.factor(as.numeric(ifelse(
+  df$S20Portata > 11.3 & df$S20Portata < 15.5 , 1,0)))
+
+
+df$S40F2MomentoTorcMax <- as.factor(as.numeric(
+  ifelse(df$S40F2MomentoTorcMax > -0.1 & df$S40F2MomentoTorcMax < 0.6 , 1,0)))
+
+df$S40Vite1Coppia <- as.factor(as.numeric(
+  ifelse(df$S40Vite1Coppia > 7 & df$S40Vite1Coppia < 9 , 1,0)))
+df$S40Vite1Angolo <- as.factor(as.numeric(
+  ifelse(df$S40Vite1Angolo > 0 & df$S40Vite1Angolo < 50 , 1,0)))
+df$S40Vite2Coppia <- as.factor(as.numeric(
+  ifelse(df$S40Vite2Coppia > 7 & df$S40Vite2Coppia < 9 , 1,0)))
+df$S40Vite2Angolo <- as.factor(as.numeric(
+  ifelse(df$S40Vite2Angolo > 0 & df$S40Vite2Angolo < 50 , 1,0)))
+df$S40Vite3Coppia <- as.factor(as.numeric(
+  ifelse(df$S40Vite3Coppia > 7 & df$S40Vite3Coppia < 9 , 1,0)))
+df$S40Vite3Angolo <- as.factor(as.numeric(
+  ifelse(df$S40Vite3Angolo > 0 & df$S40Vite3Angolo < 50 , 1,0)))
+
+df$S50PressionePT <- as.factor(as.numeric(
+  ifelse(df$S50PressionePT > 900 & df$S50PressionePT < 1150 , 1,0)))
+df$S50TenutaPZ <- as.factor(as.numeric(
+  ifelse(df$S50TenutaPZ < 2.4 , 1,0)))
+
+df$S60F2DepresMin <- as.factor(as.numeric(
+  ifelse(df$S60F2DepresMin > 330, 1,0)))
+df$S60F2Coppia <- as.factor(as.numeric(
+  ifelse(df$S60F2Coppia > 0.05 & df$S60F2Coppia < 4 , 1,0)))
+df$S60F2Velocita <- as.factor(as.numeric(
+  ifelse(df$S60F2Velocita > 390 & df$S60F2Velocita < 410 , 1,0)))
+df$S60F2TenutaVNR <- as.factor(as.numeric(
+  ifelse(df$S60F2TenutaVNR < 3 , 1,0)))
+
+str(df)
+```
+
+
+```{r}
+names <- c(colnames(df))
+for (var in names) {
+  print(var)
+  print(head(unique(df[,var])))
+}
+```
+
+
+
+
+
+Per facilitare l'apprendimento da parte degli algoritmi di structure learning, andiamo a considerare un sottoinsieme dei dati originali in cui le due classi della variabile Esito_Finale siano ribilanciate.
+
+```{r}
+set.seed(123)
+df_under <- downSample(x = df, y = df$Esito_S60)
+df_under <- df_under[,-ncol(df_under)]
+```
+
+
+```{r}
+df_under %>% filter(df_under$Esito_S60==1)%>%
+   summarise(n()) 
+
+df_under %>% filter(df_under$Esito_S60==2)%>%
+   summarise(n()) 
+
+cat("% di esito finale positivo: ", 
+    dim(df_under[df_under$Esito_S60 ==1,])[1]/dim(df_under)[1])
+
+cat("\n% di esito finale negativo: ", 
+    dim(df_under[df_under$Esito_S60 ==2,])[1]/dim(df_under)[1])
+```
+
+
+
+Ora le due classi sono bilanciate.
+
+
+Proviamo ad applicare l'algoritmo di PC per apprendere la struttura causale:
+
+```{r}
+pc1 <- pc.stable(df_under,alpha=.9)
+plot(pc1)
+```
+
+
+Proviamo ora invece con l'algoritmo di tabu search:
+
+```{r}
+tabu1 <- tabu(df_under,score="bic",tabu = 50) 
+plot(tabu1)
+```
+
+
+Infine, l'algoritmo di hill-climbing:
+
+```{r}
+hc1 <- hc(df_under)
+plot(hc1)
+```
+
+
+Tutti gli algoritmi di structure learning sembrano presentare difficoltà nel dedurre relazioni causali tra le variabili. In particolare il pc.stable trova un numero molto limitato di connessioni. Gli algoritmi tabu e hikll climbing, entrambi score-based, sembrano invece a dedurre più relazioni. In particolare le variabili Coppia, soprattutto nelle stazioni 20 e 40, sembrano influenzare tutte le altre variabili all'interno della loro stessa stazione. Dai soli dati, i modelli individuano anche diverse relazioni che non sono possibili data una conoscenza esterna come quella degli autori, come ad esempio quella tra Esito_S60 e S60F2DepresMin, o tra S50PressionePT e S20Coppia.
+
+
+
+
+
+
+
+
+
